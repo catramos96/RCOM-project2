@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#define DEBUG 0
 #define RESP_BUFFER_SIZE 1024
 
 typedef struct connectionInfo{

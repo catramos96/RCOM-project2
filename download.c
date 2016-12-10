@@ -13,12 +13,14 @@ int main(int argc, char** argv)
 	if( parse_url(argv[1], &cInfo) != 0 )
 		printf("Wrong url input.\n");
 		
-	/*printf("user = %s\n", cInfo.user);
-	printf("password = %s\n", cInfo.password);
-	printf("hostname = %s\n", cInfo.hostname);
-	printf("port = %s\n", cInfo.port);
-	printf("filepath = %s\n", cInfo.filepath);
-	printf("filename = %s\n", cInfo.filename);*/	
+	if (DEBUG){
+		printf("user = %s\n", cInfo.user);
+		printf("password = %s\n", cInfo.password);
+		printf("hostname = %s\n", cInfo.hostname);
+		printf("port = %s\n", cInfo.port);
+		printf("filepath = %s\n", cInfo.filepath);
+		printf("filename = %s\n", cInfo.filename);
+	}
 
     //--- GET IP ---
     
@@ -41,14 +43,14 @@ int main(int argc, char** argv)
 
 	int sd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);	
 	if(sd == -1){
-		perror("couldn't open socket, aborting:");
+		perror("Error opening socket");
 		exit(-1);
 	}
 	
 	//--- CONNECT ---
 	 
 	if(connect(sd, result->ai_addr, result->ai_addrlen) == -1){
-		perror("couldn't connect to server, aborting:");
+		perror("Error connecting to server");
 		exit(-1);
 	}
 	
@@ -56,9 +58,9 @@ int main(int argc, char** argv)
 	
 	int received = recv(sd, response, RESP_BUFFER_SIZE, 0);
 	response[received] = 0;
-	//printf("<CONNECT RESPONSE>\n%s\n", response);
+	if (DEBUG) printf("<CONNECT RESPONSE>\n%s\n", response);
 	
-	if(strncmp("220", response, 3)){
+	if(strncmp("220", response, 3) != 0){
 		printf("No 220 code received");
 		exit(-1);
 	}
@@ -73,49 +75,58 @@ int main(int argc, char** argv)
 	sprintf(userCmd, "USER %s\r\n", cInfo.user);
 	int sent = send(sd, userCmd, strlen(userCmd), 0);	
 	if(sent <= 0){
-		printf("Error\n");
+		printf("Error sending USER\n");
 		exit(-1);
 	}
 		
 	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
 	response[received] = 0;
-	//printf("<USER RESPONSE>\n%s\n", response);
+	if (DEBUG) printf("<USER RESPONSE>\n%s\n", response);
 
 	if(strncmp("331", response, 3) != 0){
-		printf("Error\n");
+		printf("Error in user\n");
 		exit(-1);
 	}
 
 	sprintf(passCmd, "PASS %s\r\n", cInfo.password);	
 	sent = send(sd, passCmd, strlen(passCmd), 0);
 	if(sent <= 0){
-		printf("Error\n");
+		printf("Error sending PASS \n");
 		exit(-1);
 	}
 			
-	sleep(1);
+	//sleep(1);
 	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
 	response[received] = 0;
-	//printf("<PASS RESPONSE>\n%s\n", response);
+	if (DEBUG) printf("<PASS RESPONSE>\n%s\n", response);
 
 	if(strncmp("530", response, 3) == 0){
 		printf("Login incorrect\n");
-		exit(-2);
+		exit(-1);
 	}
 	else if(strncmp("230", response, 3) != 0)
 	{
-		printf("Error\n");
+		printf("Error in login\n");
 		exit(-1);
 	}
 	
-	printf("Login successful\n\n");
+	char response2[128];
+	while(strstr(response, "230 ") == NULL)
+	{
+		received = recv(sd, response2, 128, 0);
+		response2[received] = 0;
+		strcat(response, response2);
+	}
+	if (DEBUG) printf("<PASS FULL RESPONSE>\n%s\n", response);
+	
+	printf("Login successful\n");
 
 	//--- PASV ---
 	
 	send(sd, "PASV\r\n", 6, 0);
 	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
 	response[received] = 0;
-	//printf("<PASV RESPONSE>\n%s\n", response);
+	if (DEBUG) printf("\n<PASV RESPONSE>\n%s\n", response);
 	
 	if(strncmp(response, "227", 3) != 0){
 		printf("PASV request not accepted\n");
@@ -125,25 +136,21 @@ int main(int argc, char** argv)
 	//--- 2ND SOCKET ---
 	
 	int i = 0;
-	char *dump;
-	char port[16][14]; //stack smashing prevention 
-	dump = strtok(response, "(,)");
-	while((dump = strtok(NULL, "(,)")) != NULL)
-	{		
-		strcpy(port[i++], dump);
-		//puts(dump);
+	char *token;
+	int parsedIP[6];
+	token = strtok(response, "(,)");
+	while( (token = strtok(NULL, "(,)")) != NULL && i < 6)
+	{
+		parsedIP[i] = atoi(token);
+		//printf("%d - %d\n", i, parsedIP[i]);
+		i++;
 	}
 	if(i < 6){
-		printf("Address parsing failed. Exiting.\n");
+		printf("Address parsing failed.\n");
+		exit(-1);
 	}
 	
-	int parsedIP[6];
-	for(i = 0; i < 6; i++){
-		parsedIP[i] = atoi(port[i]);
-		//printf("%d - %d\n", i, parsedIP[i]);
-	}
-	
-	char ipaddr[21];
+	char ipaddr[20];
 	sprintf(ipaddr,  "%d.%d.%d.%d", parsedIP[0], parsedIP[1], parsedIP[2], parsedIP[3]);
 
 	struct sockaddr_in addr;
@@ -151,11 +158,12 @@ int main(int argc, char** argv)
 	addr.sin_port = htons( (parsedIP[4] << 8) + parsedIP[5]);
 	inet_aton(ipaddr, (struct in_addr*) &addr.sin_addr.s_addr);
 
-	//printf("%s:%d\n", ipaddr, addr.sin_port);
+	if (DEBUG) printf("Parsed Pasv IP - %s:%d\n", ipaddr, addr.sin_port);
 	
 	int sd2 = socket(AF_INET, SOCK_STREAM, 0);
 	if( ( connect(sd2,(const struct sockaddr*) &addr, sizeof(addr)) ) == -1){
-		puts("Passive connection not made");
+		printf("Passive connection not made.\n");
+		exit(-1);
 	}
 	
 	//--- TYPE ---
@@ -163,46 +171,97 @@ int main(int argc, char** argv)
 	send(sd, "TYPE I\r\n", 8, 0);
 	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
 	response[received] = 0;
-	//printf("<TYPE RESPONSE>\n%s\n", response);
+	if (DEBUG) printf("<TYPE RESPONSE>\n%s\n", response);
 	
 	if(strncmp(response, "200", 3) != 0){
 		printf("TYPE request not accepted\n");
 		exit(-1);
 	}
 	
+	//--- SIZE ---
+	
+	char sizeCmd[512];
+	if(strlen(cInfo.filepath) > 0)
+		sprintf(sizeCmd, "SIZE %s/%s\r\n", cInfo.filepath, cInfo.filename);	
+	else
+		sprintf(sizeCmd, "SIZE %s\r\n", cInfo.filename);
+			
+	send(sd, sizeCmd, strlen(sizeCmd), 0);
+	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
+	response[received] = 0;
+	if (DEBUG) printf("<SIZE RESPONSE>\n%s\n", response);
+	
+	if(strncmp("550", response, 3) == 0){
+		printf("No such file or directory.\n");
+		exit(-1);
+	}
+	else if(strncmp("213", response, 3) != 0){
+		printf("No such file or directory.\n");
+		exit(-1);
+	}
+	
+	int size = atoi(response + 4);
+	
 	//--- RETR ---
 	
 	char retrCmd[512];
-	int retrCmdLength;
-	if(strlen(cInfo.filepath) != 0)
-		retrCmdLength = snprintf(retrCmd, 512, "RETR %s/%s\r\n", cInfo.filepath, cInfo.filename);	
+	if(strlen(cInfo.filepath) > 0)
+		sprintf(retrCmd, "RETR %s/%s\r\n", cInfo.filepath, cInfo.filename);	
 	else
-		retrCmdLength = snprintf(retrCmd, 512, "RETR %s\r\n", cInfo.filename);	
+		sprintf(retrCmd, "RETR %s\r\n", cInfo.filename);	
 	
-	send(sd, retrCmd, retrCmdLength, 0);
+	send(sd, retrCmd, strlen(retrCmd), 0);
 	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
 	response[received] = 0;
-	//printf("<RETR RESPONSE>\n%s\n", response);
+	if (DEBUG) printf("<RETR RESPONSE>\n%s\n", response);
 	
-	if(strncmp("150", response, 3)){
-		puts("file is unavailable at this time");
-		return -1;
+	if(strncmp("150", response, 3) != 0){
+		printf("File is unavailable/not found.\n");
+		exit(-1);
 	}
 	
-	printf("Downloading file...\n");
+	printf("Transfering file...\n");
 
 	char buffer[1024];
-	int bytesread;
+	int bytesReceived;
+	int totalBytes = 0;
 	
 	int fd = open(cInfo.filename, O_CREAT|O_TRUNC|O_WRONLY, 0777);
 	
-	while( bytesread = recv(sd2, buffer, 1024, 0) )
+	while( bytesReceived = recv(sd2, buffer, 1024, 0) )
 	{
-		//printf("%d ", bytesread);
-		write(fd, buffer, bytesread);
+		if (DEBUG) printf("%d ", bytesReceived);
+		if(bytesReceived == -1){
+			perror("Error receiving file");
+		}
+		write(fd, buffer, bytesReceived);
+		totalBytes += bytesReceived;
+	}
+	if (DEBUG) printf("\n");
+	
+	if (totalBytes != size){
+		printf("File size mismatch: %d (received) / %d (expected)\n", totalBytes, size);
+		//TODO delete file
+		exit(1);
 	}
 	
-	printf("File downloaded!\n");
+	close(sd2);
+	
+	close(fd);
+	
+	//--- END ---
+	
+	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
+	response[received] = 0;
+	if (DEBUG) printf("<RETR FINAL RESPONSE>\n%s\n", response);
+	
+	if(strncmp(response, "226", 3) != 0){
+		printf("Transfer failed.\n");
+		exit(-1);
+	}
+	else{
+		printf("Transfer complete!\n");
+	}
 	
 	close(sd);
 	
@@ -221,7 +280,6 @@ int parse_url(char* url, connectionInfo *cInfo)
 	int second_colon = -1;
 	int colon_count = 0;
 	int third_bar = -1;
-	//int fourth_bar = -1;
 	
 	//First cycle to determine if url has a valid syntax;
 	for(i=0;i<strlen(url);i++)
@@ -246,12 +304,6 @@ int parse_url(char* url, connectionInfo *cInfo)
 				{
 					third_bar = i;
 				}
-				//else if (fourth_bar==-1)
-				//{
-				//	fourth_bar=i;
-				//}
-				//else
-				//	return -2;
 		}
 		if(url[i] == ':' && first_bar != -1 && second_bar != -1)
 		{
@@ -268,21 +320,20 @@ int parse_url(char* url, connectionInfo *cInfo)
 	for(i=0; i < strlen(url); i++)
 	{
 		if(anonymous==0)
+		{
+			for (i=0; i < strlen(url); i++)
 			{
-				for (i=0; i < strlen(url); i++)
+				if(url[i] == ':'&& i > second_bar )
 				{
-					if(url[i] == ':'&& i > second_bar )
+					if(first_colon == -1)
 					{
-						if(first_colon == -1)
-						{
-							first_colon = i;
-						}
-						else
-							second_colon = i;
+						first_colon = i;
 					}
-					
-				}
+					else
+						second_colon = i;
+				}				
 			}
+		}
 	
 		if(anonymous ==1 && colon_count > 0)
 		{
@@ -315,7 +366,7 @@ int parse_url(char* url, connectionInfo *cInfo)
 		
 		hostname_begin = pos_arroba;
 	}
-	else
+	else //anonymous login => default user and pass
 	{
 		strcpy(cInfo->user, "ftp");
 		strcpy(cInfo->password, "eu@");
@@ -331,7 +382,7 @@ int parse_url(char* url, connectionInfo *cInfo)
 		memcpy(cInfo->port, url + second_colon + 1, third_bar - second_colon - 1);
 		cInfo->port[third_bar - second_colon - 1] = '\0';	
 	}
-	else
+	else //default port = 21
 	{
 		memcpy(cInfo->hostname, url + hostname_begin + 1, third_bar - hostname_begin - 1);
 		cInfo->hostname[third_bar - hostname_begin - 1] = '\0';
