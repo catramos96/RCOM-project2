@@ -14,6 +14,7 @@
 
 #define DEBUG 0
 #define RESP_BUFFER_SIZE 1024
+#define FILE_BUFFER_SIZE 1024
 
 typedef struct connectionInfo{
 	char user[128];
@@ -26,3 +27,4 @@ typedef struct connectionInfo{
 }connectionInfo;
 
 int parse_url(char* url, connectionInfo* connInfo);
+void loadingBar(float file_size_processed, float file_total_size);
