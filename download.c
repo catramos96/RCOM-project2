@@ -14,12 +14,13 @@ int main(int argc, char** argv)
 		printf("Wrong url input.\n");
 		
 	if (DEBUG){
+		printf("\n<PARSE URL>\n");
 		printf("user = %s\n", cInfo.user);
 		printf("password = %s\n", cInfo.password);
 		printf("hostname = %s\n", cInfo.hostname);
 		printf("port = %s\n", cInfo.port);
 		printf("filepath = %s\n", cInfo.filepath);
-		printf("filename = %s\n", cInfo.filename);
+		printf("filename = %s\n\n", cInfo.filename);
 	}
 
     //--- GET IP ---
@@ -77,9 +78,10 @@ int main(int argc, char** argv)
 	char passCmd[128];
 	
 	sprintf(userCmd, "USER %s\r\n", cInfo.user);
-	int sent = send(sd, userCmd, strlen(userCmd), 0);	
-	if(sent <= 0){
-		printf("Error sending USER\n");
+	if (DEBUG) printf("<USER CMD>\n%s\n", userCmd);
+		
+	if(send(sd, userCmd, strlen(userCmd), 0) == -1){
+		printf("Error sending USER cmd\n");
 		exit(-1);
 	}
 		
@@ -96,10 +98,11 @@ int main(int argc, char** argv)
 		exit(-1);
 	}
 
-	sprintf(passCmd, "PASS %s\r\n", cInfo.password);	
-	sent = send(sd, passCmd, strlen(passCmd), 0);
-	if(sent <= 0){
-		printf("Error sending PASS\n");
+	sprintf(passCmd, "PASS %s\r\n", cInfo.password);
+	if (DEBUG) printf("<PASS CMD>\n%s\n", passCmd);
+	
+	if(send(sd, passCmd, strlen(passCmd), 0) == -1){
+		printf("Error sending PASS cmd\n");
 		exit(-1);
 	}
 			
@@ -115,8 +118,7 @@ int main(int argc, char** argv)
 		printf("Login incorrect\n");
 		exit(-1);
 	}
-	else if(strncmp("230", response, 3) != 0)
-	{
+	else if(strncmp("230", response, 3) != 0)	{
 		printf("Login failed\n");
 		exit(-1);
 	}
@@ -132,20 +134,25 @@ int main(int argc, char** argv)
 		response2[received] = 0;
 		strcat(response, response2);
 	}
-	if (DEBUG) printf("<PASS FULL RESPONSE>\n%s\n", response);
+	//if (DEBUG) printf("<PASS FULL RESPONSE>\n%s\n", response);
 	
-	printf("Login successful\n");
+	if (!DEBUG) printf("Login successful\n");
 
 	//--- PASV ---
 	
-	send(sd, "PASV\r\n", 6, 0);
+	if (DEBUG) printf("<PASV CMD>\nPASV\n\n");
+	if(send(sd, "PASV\r\n", 6, 0) == -1){
+		printf("Error sending PASV cmd\n");
+		exit(-1);
+	}
+	
 	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
 	if(received == -1){
 		perror("Error receiving response from PASV");
 		exit(1);
 	}
 	response[received] = 0;
-	if (DEBUG) printf("\n<PASV RESPONSE>\n%s\n", response);
+	if (DEBUG) printf("<PASV RESPONSE>\n%s\n", response);
 	
 	if(strncmp(response, "227", 3) != 0){
 		printf("PASV request not accepted\n");
@@ -177,7 +184,7 @@ int main(int argc, char** argv)
 	addr.sin_port = htons( (parsedIP[4] << 8) + parsedIP[5] );
 	inet_aton(pasvIpAddr, (struct in_addr*) &addr.sin_addr.s_addr);
 
-	if (DEBUG) printf("Parsed Pasv IP address - %s:%d\n", pasvIpAddr, addr.sin_port);
+	if (DEBUG) printf("Parsed Pasv IP address - %s:%d\n\n", pasvIpAddr, addr.sin_port);
 	
 	int sd2 = socket(AF_INET, SOCK_STREAM, 0);
 	if( (connect(sd2, (const struct sockaddr*) &addr, sizeof(addr)) ) == -1){
@@ -187,7 +194,12 @@ int main(int argc, char** argv)
 	
 	//--- TYPE ---
 	
-	send(sd, "TYPE I\r\n", 8, 0);
+	if (DEBUG) printf("<TYPE CMD>\nTYPE I\n\n");
+	if(send(sd, "TYPE I\r\n", 8, 0) == -1){
+		printf("Error sending TYPE cmd\n");
+		exit(-1);
+	}
+	
 	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
 	if(received == -1){
 		perror("Error receiving response from TYPE");
@@ -209,7 +221,12 @@ int main(int argc, char** argv)
 	else
 		sprintf(sizeCmd, "SIZE %s\r\n", cInfo.filename);
 			
-	send(sd, sizeCmd, strlen(sizeCmd), 0);
+	if (DEBUG) printf("<SIZE CMD>\nSIZE\n\n");
+	if(send(sd, sizeCmd, strlen(sizeCmd), 0) == -1){
+		printf("Error sending SIZE cmd\n");
+		exit(-1);
+	}
+	
 	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
 	if(received == -1){
 		perror("Error receiving response from SIZE");
@@ -237,7 +254,12 @@ int main(int argc, char** argv)
 	else
 		sprintf(retrCmd, "RETR %s\r\n", cInfo.filename);	
 	
-	send(sd, retrCmd, strlen(retrCmd), 0);
+	if (DEBUG) printf("<RETR CMD>\n%s\n", retrCmd);
+	if(send(sd, retrCmd, strlen(retrCmd), 0) == -1){
+		printf("Error sending RETR cmd\n");
+		exit(-1);
+	}
+	
 	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
 	if(received == -1){
 		perror("Error receiving response from RETR");
@@ -251,7 +273,8 @@ int main(int argc, char** argv)
 		exit(-1);
 	}
 	
-	printf("Transfering file...\n");
+	if (DEBUG) printf("Transfering file (bytes received)\n");
+	else printf("Transfering file...\n");	
 
 	char buffer[FILE_BUFFER_SIZE];
 	int bytesReceived;
@@ -268,7 +291,7 @@ int main(int argc, char** argv)
 			write(fd, buffer, bytesReceived);
 			totalBytes += bytesReceived;			
 		}
-		if (DEBUG) printf("%d ", bytesReceived);
+		if (DEBUG) printf("(%d)", bytesReceived);
 		else loadingBar(totalBytes, size);
 	}
 	printf("\n");
@@ -287,7 +310,7 @@ int main(int argc, char** argv)
 	
 	received = recv(sd, response, RESP_BUFFER_SIZE, 0);
 	response[received] = 0;
-	if (DEBUG) printf("<RETR FINAL RESPONSE>\n%s\n", response);
+	if (DEBUG) printf("\n<RETR FINAL RESPONSE>\n%s\n", response);
 	
 	if(strncmp(response, "226", 3) != 0){
 		printf("Transfer failed.\n");
@@ -309,84 +332,54 @@ int parse_url(char* url, connectionInfo *cInfo)
 	int anonymous = 1;
 	int first_bar = -1;
 	int second_bar = -1;
-	//int path_bar = -1;
 	int first_colon = -1;
 	int second_colon = -1;
 	int colon_count = 0;
 	int third_bar = -1;
 	
 	//First cycle to determine if url has a valid syntax;
-	for(i=0;i<strlen(url);i++)
-	{
-		if (url[i] == '@')
-		{
+	for(i=0;i<strlen(url);i++){
+		if (url[i] == '@'){
 			anonymous = 0;
 			pos_arroba = i;
 		}
-		if(url[i]=='/')
-		{
-				if(first_bar == -1)
-					first_bar=i;
-				else if(second_bar == -1)
-				{
-					if(first_bar == i-1)
-						second_bar = i;
-					else
-						return -1;
-				}
-				else if (third_bar == -1)
-				{
-					third_bar = i;
-				}
+		if(url[i]=='/'){
+			if(first_bar == -1)
+				first_bar=i;
+			else if(second_bar == -1){
+				if(first_bar == i-1)
+					second_bar = i;
+				else
+					return -1;
+			}
+			else if (third_bar == -1)
+				third_bar = i;
 		}
-		if(url[i] == ':' && first_bar != -1 && second_bar != -1)
-		{
+		if(url[i] == ':' && first_bar != -1 && second_bar != -1){
 			if(colon_count > 1)
 				return -3;
 			else
-			{
 				colon_count++;
-			}
 		}
 	}
 	
-	for(i=0; i < strlen(url); i++)
-	{
-		if(anonymous==0)
-		{
-			for (i=0; i < strlen(url); i++)
-			{
-				if(url[i] == ':'&& i > second_bar )
-				{
-					if(first_colon == -1)
-					{
+	for(i=0; i < strlen(url); i++){
+		if(anonymous==0){
+			for (i=0; i < strlen(url); i++){
+				if(url[i] == ':'&& i > second_bar ){
+					if(first_colon == -1)					
 						first_colon = i;
-					}
 					else
 						second_colon = i;
 				}				
 			}
 		}
 	
-		if(anonymous ==1 && colon_count > 0)
-		{
+		if(anonymous ==1 && colon_count > 0){
 			if(url[i] == ':' && i > second_bar)
-			{
 				second_colon = i;
-			}
 		}		
-	}
-	
-	/*
-	printf("anonymous = %d\n",anonymous);
-	printf("first_bar = %d\n",first_bar);
-	printf("second_bar = %d\n",second_bar);
-	printf("third_bar = %d\n",third_bar);
-	//printf("fourth_bar = %d\n",fourth_bar);
-	printf("first_colon = %d\n",first_colon);
-	printf("second_colon = %d\n",second_colon);
-	printf("pos_arroba = %d\n\n",pos_arroba);
-	*/
+	}	
 	
 	int hostname_begin = 0;
 	if (anonymous == 0)
