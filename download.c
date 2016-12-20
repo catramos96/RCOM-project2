@@ -10,7 +10,7 @@ int main(int argc, char** argv)
 	
 	connectionInfo cInfo;
 	
-	if( parse_url(argv[1], &cInfo) != 0 )
+	if( parseUrl(argv[1], &cInfo) != 0 )
 		printf("Wrong url input.\n");
 		
 	if (DEBUG){
@@ -23,6 +23,13 @@ int main(int argc, char** argv)
 		printf("filename = %s\n\n", cInfo.filename);
 	}
 
+	ftpClient(cInfo);
+	
+	return 0;
+}
+
+void ftpClient(connectionInfo cInfo)
+{
     //--- GET IP ---
     
 	struct addrinfo hints;
@@ -188,7 +195,7 @@ int main(int argc, char** argv)
 	
 	int sd2 = socket(AF_INET, SOCK_STREAM, 0);
 	if( (connect(sd2, (const struct sockaddr*) &addr, sizeof(addr)) ) == -1){
-		printf("Passive connection not made.\n");
+		printf("Data connection not established.\n");
 		exit(-1);
 	}
 	
@@ -244,7 +251,7 @@ int main(int argc, char** argv)
 		exit(-1);
 	}
 	
-	int size = atoi(response + 4);
+	int filesize = atoi(response + 4);
 	
 	//--- RETR ---
 	
@@ -276,35 +283,11 @@ int main(int argc, char** argv)
 	if (DEBUG) printf("Transfering file (bytes received)\n");
 	else printf("Transfering file...\n");	
 
-	char buffer[FILE_BUFFER_SIZE];
-	int bytesReceived;
-	int totalBytes = 0;
+	//--- Transfer file  ---
 	
-	int fd = open(cInfo.filename, O_CREAT|O_TRUNC|O_WRONLY, 0777);
-	
-	while( (bytesReceived = recv(sd2, buffer, FILE_BUFFER_SIZE, 0)) != 0 )
-	{		
-		if(bytesReceived == -1){
-			perror("Error receiving file data");
-		}
-		else{
-			write(fd, buffer, bytesReceived);
-			totalBytes += bytesReceived;			
-		}
-		if (DEBUG) printf("(%d)", bytesReceived);
-		else loadingBar(totalBytes, size);
-	}
-	printf("\n");
-	
-	if (totalBytes != size){
-		printf("File size mismatch: %d (received) / %d (expected)\n", totalBytes, size);
-		//TODO delete file
-		exit(1);
-	}
+	dataConnection(sd2, cInfo.filename, filesize);
 	
 	close(sd2);
-	
-	close(fd);
 	
 	//--- END ---
 	
@@ -321,11 +304,40 @@ int main(int argc, char** argv)
 	}
 	
 	close(sd);
-	
-	return 0;
 }
 
-int parse_url(char* url, connectionInfo *cInfo)
+void dataConnection(int sd2, char * filename, int filesize)
+{
+	char buffer[FILE_BUFFER_SIZE];
+	int bytesReceived;
+	int totalBytes = 0;
+	
+	int fd = open(filename, O_CREAT|O_TRUNC|O_WRONLY, 0777);
+	
+	while( (bytesReceived = recv(sd2, buffer, FILE_BUFFER_SIZE, 0)) != 0 )
+	{		
+		if(bytesReceived == -1){
+			perror("Error receiving file data");
+		}
+		else{
+			write(fd, buffer, bytesReceived);
+			totalBytes += bytesReceived;			
+		}
+		if (DEBUG) printf("(%d)", bytesReceived);
+		else loadingBar(totalBytes, filesize);
+	}
+	printf("\n");
+
+	close(fd);
+	
+	if (totalBytes != filesize){
+		printf("File size mismatch: %d (received) / %d (expected)\n", totalBytes, filesize);
+		//TODO delete file
+		exit(1);
+	}
+}
+
+int parseUrl(char* url, connectionInfo *cInfo)
 {
 	int pos_arroba = -1;
 	unsigned int i = 0;

@@ -26,5 +26,7 @@ typedef struct connectionInfo{
 
 }connectionInfo;
 
-int parse_url(char* url, connectionInfo* connInfo);
+int parseUrl(char * url, connectionInfo* connInfo);
+void ftpClient(connectionInfo cInfo);
+void dataConnection(int sd2, char * filename, int filesize);
 void loadingBar(float file_size_processed, float file_total_size);
